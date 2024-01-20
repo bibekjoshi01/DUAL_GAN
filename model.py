@@ -278,14 +278,16 @@ class DualNet(object):
             # Decide whether to use paired or unpaired data based on the step count
             if step <= transition_step * paired_epoch_size:
                 data_A, data_B, epoch_size = paired_data_A, paired_data_B, paired_epoch_size
+                is_paired=True
             else:
                 data_A, data_B, epoch_size = unpaired_data_A, unpaired_data_B, unpaired_epoch_size
+                is_paired=False
 
             for batch_idx in range(0, epoch_size):
-                imgA_batch, imgB_batch = self.load_training_imgs(data_A, data_B, batch_idx)
+                imgA_batch, imgB_batch = self.load_training_imgs(data_A, data_B, batch_idx, is_paired)
 
                 # Run optimization step
-                self.run_optim(imgA_batch, imgB_batch, step, start_time, batch_idx)
+                self.run_optim(imgA_batch, imgB_batch, step, start_time, batch_idx, is_paired)
 
                 if step % self.log_freq == 0:
                     print("Step: [%4d/%4d]" % (step, epoch_size))
@@ -298,10 +300,16 @@ class DualNet(object):
 
                 step += 1
 
-    def load_training_imgs(self, data_A, data_B, idx):
-        # Load paired images
-        batch_files_A = data_A[idx * self.batch_size : (idx + 1) * self.batch_size]
-        batch_files_B = data_B[idx * self.batch_size : (idx + 1) * self.batch_size]
+    def load_training_imgs(self, data_A, data_B, idx, is_paired):
+
+        if is_paired:
+            # Load images assuming data_A and data_B are paired
+            batch_files_A = data_A[idx * self.batch_size : (idx + 1) * self.batch_size]
+            batch_files_B = data_B[idx * self.batch_size : (idx + 1) * self.batch_size]
+        else:
+            # Load images for unpaired training (can be random or sequential)
+            batch_files_A = np.random.choice(data_A, self.batch_size, replace=False)
+            batch_files_B = np.random.choice(data_B, self.batch_size, replace=False)
 
         batch_imgs_A = [load_data(f, image_size=self.image_size, flip=self.flip) for f in batch_files_A]
         batch_imgs_B = [load_data(f, image_size=self.image_size, flip=self.flip) for f in batch_files_B]
@@ -311,7 +319,7 @@ class DualNet(object):
 
         return batch_imgs_A, batch_imgs_B
 
-    def run_optim(self, batch_A_imgs, batch_B_imgs, counter, start_time, batch_idx):
+    def run_optim(self, batch_A_imgs, batch_B_imgs, counter, start_time, batch_idx, is_paired):
         # Update discriminator
         _, Adfake, Adreal, Bdfake, Bdreal, Ad, Bd = self.sess.run(
             [
@@ -331,26 +339,39 @@ class DualNet(object):
             self.sess.run(self.clip_ops)
 
         # Update generator
-        # For WGAN, update the generator every 'n_critic' iterations
-        # For other GAN types, update the generator in every iteration
         if ("wgan" in self.GAN_type and batch_idx % self.n_critic == 0) or "wgan" not in self.GAN_type:
-            _, Ag, Bg, cycle_A_loss, cycle_B_loss = self.sess.run(
-                [
-                    self.g_optim,
-                    self.Ag_loss,
-                    self.Bg_loss,
-                    self.cycle_A_loss,  # Cycle consistency loss for A
-                    self.cycle_B_loss,  # Cycle consistency loss for B
-                ],
-                feed_dict={self.real_A: batch_A_imgs, self.real_B: batch_B_imgs},
-            )
+            if is_paired:
+                # Custom logic for paired data
+                _, Ag, Bg, cycle_A_loss, cycle_B_loss = self.sess.run(
+                    [
+                        self.g_optim,
+                        self.Ag_loss,
+                        self.Bg_loss,
+                        self.cycle_A_loss,  # Emphasize cycle consistency for paired data
+                        self.cycle_B_loss,
+                    ],
+                    feed_dict={self.real_A: batch_A_imgs, self.real_B: batch_B_imgs},
+                )
+            else: 
+                # Custom logic for unpaired data
+                # Potentially relax cycle consistency or apply different strategies
+                _, Ag, Bg, ABloss, BAloss = self.sess.run(
+                    [
+                        self.g_optim,
+                        self.Ag_loss,  # Adjust if needed for unpaired data
+                        self.Bg_loss,  # Adjust if needed for unpaired data
+                        self.AB_loss,  # Loss for A to B translation
+                        self.BA_loss,  # Loss for B to A translation
+                    ],
+                    feed_dict={self.real_A: batch_A_imgs, self.real_B: batch_B_imgs},
+                )
 
-        # Log training progress
+        # Logging training progress
         if batch_idx % self.log_freq == 0:
             elapsed_time = time.time() - start_time
-            print(f"time: {elapsed_time:.4f}, Ad: {Ad:.2f}, Ag: {Ag:.2f}, Bd: {Bd:.2f}, Bg: {Bg:.2f}, "
-                f"Cycle_A_loss: {cycle_A_loss:.5f}, Cycle_B_loss: {cycle_B_loss:.5f}")
-            print(f"Ad_fake: {Adfake:.2f}, Ad_real: {Adreal:.2f}, Bd_fake: {Bdfake:.2f}, Bd_real: {Bdreal:.2f}")
+            loss_info = (Ad, Ag, Bd, Bg, cycle_A_loss if is_paired else ABloss, cycle_B_loss if is_paired else BAloss)
+            print("time: %4.4f, Ad: %.2f, Ag: %.2f, Bd: %.2f, Bg: %.2f,  A_loss: %.5f, B_loss: %.5f" % (elapsed_time, *loss_info))
+            print("Ad_fake: %.2f, Ad_real: %.2f, Bd_fake: %.2f, Bd_real: %.2f" % (Adfake, Adreal, Bdfake, Bdreal))
 
     def A_d_net(self, imgs, y=None, reuse=False):
         return self.discriminator(imgs, prefix="A_d_", reuse=reuse)
