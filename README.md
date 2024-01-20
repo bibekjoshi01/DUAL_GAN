@@ -49,3 +49,7 @@ python main.py --phase test --dataset_name facades --lambda_A 1000.0 --lambda_B 
 
 Codes are built on the top of pix2pix-tensorflow and DCGAN-tensorflow. Thanks for their precedent contributions!
 "# DUAL_GAN" 
+
+python -m pytorch_fid ./input/A ./input/B
+
+FID Calculation
