@@ -10,6 +10,10 @@ import numpy as np
 from ops import *
 from utils import *
 
+# Import the InceptionV3 model for feature extraction
+from tensorflow.keras.applications.inception_v3 import InceptionV3
+from tensorflow.keras.applications.inception_v3 import preprocess_input
+
 
 class DualNet(object):
     def __init__(
@@ -23,6 +27,7 @@ class DualNet(object):
         B_channels=3,
         dataset_name="facades",
         checkpoint_dir=None,
+        transition_epoch=50,
         lambda_A=500.0,
         lambda_B=500.0,
         sample_dir=None,
@@ -73,34 +78,34 @@ class DualNet(object):
 
     def build_model(self):
         ### Define placeholders
-        self.real_A = tf.placeholder(
-            tf.float32,
-            [self.batch_size, self.image_size, self.image_size, self.A_channels],
-            name="real_A",
-        )
-        self.real_B = tf.placeholder(
-            tf.float32,
-            [self.batch_size, self.image_size, self.image_size, self.B_channels],
-            name="real_B",
-        )
+        self.real_A = tf.placeholder(tf.float32, [self.batch_size, self.image_size, self.image_size, self.A_channels], name="real_A")
+        self.real_B = tf.placeholder(tf.float32, [self.batch_size, self.image_size, self.image_size, self.B_channels], name="real_B")
 
         ### Define graphs for generators
         self.A2B = self.A_g_net(self.real_A, reuse=False)  # Generator A to B
         self.B2A = self.B_g_net(self.real_B, reuse=False)  # Generator B to A
 
-        ### Define supervised loss (compare generated images with ground truth)
+        # Additional transformations for cycle consistency
+        self.A2B2A = self.B_g_net(self.A2B, reuse=True)  # Cycle: A to B to A
+        self.B2A2B = self.A_g_net(self.B2A, reuse=True)  # Cycle: B to A to B
+
+        ### Define cycle consistency loss
         if self.loss_metric == "L1":
-            self.AB_loss = tf.reduce_mean(tf.abs(self.A2B - self.real_B))  # Loss for A to B translation
-            self.BA_loss = tf.reduce_mean(tf.abs(self.B2A - self.real_A))  # Loss for B to A translation
+            self.cycle_A_loss = tf.reduce_mean(tf.abs(self.A2B2A - self.real_A))
+            self.cycle_B_loss = tf.reduce_mean(tf.abs(self.B2A2B - self.real_B))
         elif self.loss_metric == "L2":
-            self.AB_loss = tf.reduce_mean(tf.square(self.A2B - self.real_B))  # Loss for A to B translation
-            self.BA_loss = tf.reduce_mean(tf.square(self.B2A - self.real_A))  # Loss for B to A translation
+            self.cycle_A_loss = tf.reduce_mean(tf.square(self.A2B2A - self.real_A))
+            self.cycle_B_loss = tf.reduce_mean(tf.square(self.B2A2B - self.real_B))
 
         ### Define adversarial losses for generators and discriminators
         self.Ad_logits_fake = self.A_d_net(self.A2B, reuse=False)
         self.Ad_logits_real = self.A_d_net(self.real_B, reuse=True)
         self.Bd_logits_fake = self.B_d_net(self.B2A, reuse=False)
         self.Bd_logits_real = self.B_d_net(self.real_A, reuse=True)
+
+        # Define adversarial loss for A to B and B to A translations
+        self.AB_loss = celoss(self.Ad_logits_fake, tf.ones_like(self.Ad_logits_fake))
+        self.BA_loss = celoss(self.Bd_logits_fake, tf.ones_like(self.Bd_logits_fake))
 
         # Classic GAN loss or Wasserstein GAN loss (depending on self.GAN_type)
         if self.GAN_type == "classic":
@@ -117,13 +122,13 @@ class DualNet(object):
         self.Ad_loss = self.Ad_loss_fake + self.Ad_loss_real  # Total discriminator loss for A
         self.Bd_loss = self.Bd_loss_fake + self.Bd_loss_real  # Total discriminator loss for B
 
-        ### Define total generator losses (include supervised component)
+        ### Update supervised and total generator losses (include supervised component)
         if self.GAN_type == "classic":
-            self.Ag_loss = celoss(self.Ad_logits_fake, tf.ones_like(self.Ad_logits_fake)) + self.lambda_B * self.AB_loss
-            self.Bg_loss = celoss(self.Bd_logits_fake, tf.ones_like(self.Bd_logits_fake)) + self.lambda_A * self.BA_loss
+            self.Ag_loss = celoss(self.Ad_logits_fake, tf.ones_like(self.Ad_logits_fake)) + self.lambda_B * self.cycle_B_loss
+            self.Bg_loss = celoss(self.Bd_logits_fake, tf.ones_like(self.Bd_logits_fake)) + self.lambda_A * self.cycle_A_loss
         else:
-            self.Ag_loss = -tf.reduce_mean(self.Ad_logits_fake) + self.lambda_B * self.AB_loss
-            self.Bg_loss = -tf.reduce_mean(self.Bd_logits_fake) + self.lambda_A * self.BA_loss
+            self.Ag_loss = -tf.reduce_mean(self.Ad_logits_fake) + self.lambda_B * self.cycle_B_loss
+            self.Bg_loss = -tf.reduce_mean(self.Bd_logits_fake) + self.lambda_A * self.cycle_A_loss
 
         ### Combine discriminator and generator losses
         self.d_loss = self.Ad_loss + self.Bd_loss
@@ -193,8 +198,8 @@ class DualNet(object):
         sample_A_imgs, sample_B_imgs = self.load_random_samples()
 
         # Run the session to get A to B translations and losses
-        A2B_imgs = self.sess.run(
-            self.A2B,
+        A2B_imgs, A2B2A_imgs = self.sess.run(
+            [self.A2B, self.A2B2A],
             feed_dict={self.real_A: sample_A_imgs}
         )
         ABloss = self.sess.run(
@@ -203,8 +208,8 @@ class DualNet(object):
         )
 
         # Run the session to get B to A translations and losses
-        B2A_imgs = self.sess.run(
-            self.B2A,
+        B2A_imgs, B2A2B_imgs = self.sess.run(
+            [self.B2A, self.B2A2B],
             feed_dict={self.real_B: sample_B_imgs}
         )
         BAloss = self.sess.run(
@@ -216,22 +221,28 @@ class DualNet(object):
         save_images(
             A2B_imgs,
             [self.batch_size, 1],
-            "./{}/{}/{:06d}_{:04d}_A2B.jpg".format(
-                sample_dir, self.dir_name, epoch_idx, batch_idx
-            )
+            "./{}/{}/{:06d}_{:04d}_A2B.jpg".format(sample_dir, self.dir_name, epoch_idx, batch_idx)
         )
         save_images(
             B2A_imgs,
             [self.batch_size, 1],
-            "./{}/{}/{:06d}_{:04d}_B2A.jpg".format(
-                sample_dir, self.dir_name, epoch_idx, batch_idx
-            )
+            "./{}/{}/{:06d}_{:04d}_B2A.jpg".format(sample_dir, self.dir_name, epoch_idx, batch_idx)
+        )
+        save_images(
+            A2B2A_imgs,
+            [self.batch_size, 1],
+            "./{}/{}/{:06d}_{:04d}_A2B2A.jpg".format(sample_dir, self.dir_name, epoch_idx, batch_idx)
+        )
+        save_images(
+            B2A2B_imgs,
+            [self.batch_size, 1],
+            "./{}/{}/{:06d}_{:04d}_B2A2B.jpg".format(sample_dir, self.dir_name, epoch_idx, batch_idx)
         )
 
         print("[Sample] AB_loss: {:.8f}, BA_loss: {:.8f}".format(ABloss, BAloss))
 
     def train(self, args):
-        """Train Dual GAN for supervised learning"""
+        """Train Dual GAN with both paired and unpaired data."""
         decay = 0.9
         self.d_optim = tf.train.RMSPropOptimizer(args.lr, decay=decay).minimize(
             self.d_loss, var_list=self.d_vars
@@ -248,36 +259,36 @@ class DualNet(object):
 
         self.writer = tf.summary.FileWriter("./logs/" + self.dir_name, self.sess.graph)
 
-        step = 1
+        transition_step = 5  # Number of steps to train with paired data
+
+        # Load paired data
+        paired_data_A, paired_data_B = self.load_paired_data()
+        paired_epoch_size = min(len(paired_data_A), len(paired_data_B)) // self.batch_size
+
+        # Load unpaired data
+        unpaired_data_A, unpaired_data_B = self.load_unpaired_data()
+        unpaired_epoch_size = min(len(unpaired_data_A), len(unpaired_data_B)) // self.batch_size
+
+        step = 1  # Reset step count
         start_time = time.time()
 
-        if self.load(self.checkpoint_dir):
-            print(" [*] Load SUCCESS")
-        else:
-            print(" Load failed...ignored...")
-            print(" start training...")
-
         for epoch_idx in range(args.epoch):
-            # Load and sort the data to ensure pairing
-            data_A = glob("./datasets/{}/train/A/*.*[g|G]".format(self.dataset_name))
-            data_B = glob("./datasets/{}/train/B/*.*[g|G]".format(self.dataset_name))
-            data_A.sort()
-            data_B.sort()
+            print("Epoch: [%2d]" % epoch_idx)
 
-            epoch_size = min(len(data_A), len(data_B)) // self.batch_size
-            print("[*] Training data loaded successfully")
-            print("#data_A: %d  #data_B:%d" % (len(data_A), len(data_B)))
-            print("[*] Run optimizer...")
+            # Decide whether to use paired or unpaired data based on the step count
+            if step <= transition_step * paired_epoch_size:
+                data_A, data_B, epoch_size = paired_data_A, paired_data_B, paired_epoch_size
+            else:
+                data_A, data_B, epoch_size = unpaired_data_A, unpaired_data_B, unpaired_epoch_size
 
             for batch_idx in range(0, epoch_size):
                 imgA_batch, imgB_batch = self.load_training_imgs(data_A, data_B, batch_idx)
-                if step % self.log_freq == 0:
-                    print("Epoch: [%2d] [%4d/%4d]" % (epoch_idx, batch_idx, epoch_size))
 
                 # Run optimization step
                 self.run_optim(imgA_batch, imgB_batch, step, start_time, batch_idx)
 
-                step += 1
+                if step % self.log_freq == 0:
+                    print("Step: [%4d/%4d]" % (step, epoch_size))
 
                 if np.mod(step, 100) == 1:
                     self.sample_shotcut(args.sample_dir, epoch_idx, batch_idx)
@@ -285,20 +296,7 @@ class DualNet(object):
                 if np.mod(step, args.save_freq) == 2:
                     self.save(args.checkpoint_dir, step)
 
-
-    # def load_training_imgs(self, files, idx):
-    #     batch_files = files[idx * self.batch_size : (idx + 1) * self.batch_size]
-    #     batch_imgs = [
-    #         load_data(f, image_size=self.image_size, flip=self.flip)
-    #         for f in batch_files
-    #     ]
-
-    #     batch_imgs = np.reshape(
-    #         np.array(batch_imgs).astype(np.float32),
-    #         (self.batch_size, self.image_size, self.image_size, -1),
-    #     )
-
-    #     return batch_imgs
+                step += 1
 
     def load_training_imgs(self, data_A, data_B, idx):
         # Load paired images
@@ -328,31 +326,31 @@ class DualNet(object):
             feed_dict={self.real_A: batch_A_imgs, self.real_B: batch_B_imgs},
         )
 
+        # For WGAN, clip the discriminator weights
         if "wgan" == self.GAN_type:
             self.sess.run(self.clip_ops)
 
         # Update generator
-        if "wgan" in self.GAN_type and batch_idx % self.n_critic == 0 or "wgan" not in self.GAN_type:
-            _, Ag, Bg, ABloss, BAloss = self.sess.run(
+        # For WGAN, update the generator every 'n_critic' iterations
+        # For other GAN types, update the generator in every iteration
+        if ("wgan" in self.GAN_type and batch_idx % self.n_critic == 0) or "wgan" not in self.GAN_type:
+            _, Ag, Bg, cycle_A_loss, cycle_B_loss = self.sess.run(
                 [
                     self.g_optim,
                     self.Ag_loss,
                     self.Bg_loss,
-                    self.AB_loss,  # Updated from self.A_loss
-                    self.BA_loss,  # Updated from self.B_loss
+                    self.cycle_A_loss,  # Cycle consistency loss for A
+                    self.cycle_B_loss,  # Cycle consistency loss for B
                 ],
                 feed_dict={self.real_A: batch_A_imgs, self.real_B: batch_B_imgs},
             )
 
+        # Log training progress
         if batch_idx % self.log_freq == 0:
-            print(
-                "time: %4.4f, Ad: %.2f, Ag: %.2f, Bd: %.2f, Bg: %.2f,  AB_diff: %.5f, BA_diff: %.5f"
-                % (time.time() - start_time, Ad, Ag, Bd, Bg, ABloss, BAloss)
-            )
-            print(
-                "Ad_fake: %.2f, Ad_real: %.2f, Bd_fake: %.2f, Bd_real: %.2f"
-                % (Adfake, Adreal, Bdfake, Bdreal)
-            )
+            elapsed_time = time.time() - start_time
+            print(f"time: {elapsed_time:.4f}, Ad: {Ad:.2f}, Ag: {Ag:.2f}, Bd: {Bd:.2f}, Bg: {Bg:.2f}, "
+                f"Cycle_A_loss: {cycle_A_loss:.5f}, Cycle_B_loss: {cycle_B_loss:.5f}")
+            print(f"Ad_fake: {Adfake:.2f}, Ad_real: {Adreal:.2f}, Bd_fake: {Bdfake:.2f}, Bd_real: {Bdreal:.2f}")
 
     def A_d_net(self, imgs, y=None, reuse=False):
         return self.discriminator(imgs, prefix="A_d_", reuse=reuse)
@@ -413,6 +411,43 @@ class DualNet(object):
 
     def B_g_net(self, imgs, reuse=False):
         return self.fcn(imgs, prefix="B_g_", reuse=reuse)
+
+    def calculate_cycle_loss(self, real_image, generated_image):
+        if self.loss_metric == "L1":
+            return tf.reduce_mean(tf.abs(generated_image - real_image))
+        elif self.loss_metric == "L2":
+            return tf.reduce_mean(tf.square(generated_image - real_image))
+
+    def load_unpaired_data(self):
+        # Load all data
+        all_data_A = glob("./datasets/{}/train/A/*.*[g|G]".format(self.dataset_name))
+        all_data_B = glob("./datasets/{}/train/B/*.*[g|G]".format(self.dataset_name))
+
+        # Optionally, you could shuffle the data
+        np.random.shuffle(all_data_A)
+        np.random.shuffle(all_data_B)
+
+        return all_data_A, all_data_B
+
+    def load_paired_data(self):
+        # Load paired images from the dataset
+        # This assumes you have a way to identify which images are pairs across domains A and B
+        data_A = glob("./datasets/{}/train/A/*.*[g|G]".format(self.dataset_name))
+        data_B = glob("./datasets/{}/train/B/*.*[g|G]".format(self.dataset_name))
+
+        # This part depends on how your dataset is structured.
+        # If your paired images have matching filenames in folders A and B, you could pair them like this:
+        paired_data_A = []
+        paired_data_B = []
+        for file_A in data_A:
+            filename = os.path.basename(file_A)
+            corresponding_file_B = os.path.join("./datasets/{}/train/B".format(self.dataset_name), filename)
+            if os.path.exists(corresponding_file_B):
+                paired_data_A.append(file_A)
+                paired_data_B.append(corresponding_file_B)
+
+        # Return the paired data
+        return paired_data_A, paired_data_B
 
     def fcn(self, imgs, prefix=None, reuse=False):
         with tf.variable_scope(tf.get_variable_scope()) as scope:
@@ -608,15 +643,40 @@ class DualNet(object):
         """Test DualNet"""
         start_time = time.time()
         tf.global_variables_initializer().run()
+        # inception_model = InceptionV3(include_top=False, pooling='avg', input_shape=(299, 299, 3))
+
         if self.load(self.checkpoint_dir):
             print(" [*] Load SUCCESS")
             test_dir = "./{}/{}".format(args.test_dir, self.dir_name)
             if not os.path.exists(test_dir):
                 os.makedirs(test_dir)
+
             test_log = open(test_dir + "evaluation.txt", "a")
             test_log.write(self.dir_name)
+
+            # fid_value_A = self.calculate_fid_for_domain(args, test_dir, "A", inception_model)
+            # fid_value_B = self.calculate_fid_for_domain(args, test_dir, "B", inception_model)
+
+            # print(f"FID for domain A: {fid_value_A}")
+            # print(f"FID for domain B: {fid_value_B}")
+
+            # test_log.write(f"FID for domain A: {fid_value_A}\n")
+            # test_log.write(f"FID for domain B: {fid_value_B}\n")
+
             self.test_domain(args, test_log, type="B")
             self.test_domain(args, test_log, type="A")
+
+            # Calculate IoU for domain A and B
+            # iou_A = calculate_iou(real_images_A, generated_images_A)
+            # iou_B = calculate_iou(real_images_B, generated_images_B)
+            
+            # print(f"IoU for domain A: {iou_A}")
+            # print(f"IoU for domain B: {iou_B}")
+            
+            # test_log.write(f"IoU for domain A: {iou_A}\n")
+            # test_log.write(f"IoU for domain B: {iou_B}\n")
+
+            test_log.close()
             test_log.close()
 
     def test_domain(self, args, test_log, type="A"):
@@ -634,28 +694,61 @@ class DualNet(object):
         test_imgs = np.asarray(test_imgs)
         test_path = "./{}/{}/".format(args.test_dir, self.dir_name)
 
+        psnr_values = []
+
         # Test input samples
-        if type == "A":
-            for i in range(0, len(test_files) // self.batch_size):
-                filename_o = test_files[i * self.batch_size].split("/")[-1].split(".")[0]
-                print(filename_o)
-                idx = i + 1
-                A_imgs = np.reshape(np.array(test_imgs[i]),
-                                    (self.batch_size, self.image_size, self.image_size, -1))
-                print("testing A image %d" % (idx))
-                A2B_imgs = self.sess.run(self.A2B, feed_dict={self.real_A: A_imgs})
-                save_images(A_imgs, [self.batch_size, 1], test_path + filename_o + "_realA.jpg")
-                save_images(A2B_imgs, [self.batch_size, 1], test_path + filename_o + "_A2B.jpg")
-        elif type == "B":
-            for i in range(0, len(test_files) // self.batch_size):
-                filename_o = test_files[i * self.batch_size].split("/")[-1].split(".")[0]
-                print(filename_o)
-                idx = i + 1
-                B_imgs = np.reshape(np.array(test_imgs[i]),
-                                    (self.batch_size, self.image_size, self.image_size, -1))
-                print("testing B image %d" % (idx))
-                B2A_imgs = self.sess.run(self.B2A, feed_dict={self.real_B: B_imgs})
-                save_images(B_imgs, [self.batch_size, 1], test_path + filename_o + "_realB.jpg")
-                save_images(B2A_imgs, [self.batch_size, 1], test_path + filename_o + "_B2A.jpg")
+        for i in range(0, len(test_files) // self.batch_size):
+            filename_o = test_files[i * self.batch_size].split("/")[-1].split(".")[0]
+            print(filename_o)
+            idx = i + 1
 
+            if type == "A":
+                real_imgs = np.reshape(np.array(test_imgs[i]),
+                                    (self.batch_size, self.image_size, self.image_size, -1))
+                generated_imgs = self.sess.run(self.A2B, feed_dict={self.real_A: real_imgs})
+                save_images(real_imgs, [self.batch_size, 1], test_path + filename_o + "_realA.jpg")
+                save_images(generated_imgs, [self.batch_size, 1], test_path + filename_o + "_A2B.jpg")
 
+            elif type == "B":
+                real_imgs = np.reshape(np.array(test_imgs[i]),
+                                    (self.batch_size, self.image_size, self.image_size, -1))
+                generated_imgs = self.sess.run(self.B2A, feed_dict={self.real_B: real_imgs})
+                save_images(real_imgs, [self.batch_size, 1], test_path + filename_o + "_realB.jpg")
+                save_images(generated_imgs, [self.batch_size, 1], test_path + filename_o + "_B2A.jpg")
+
+            # Calculate PSNR
+            for real_img, generated_img in zip(real_imgs, generated_imgs):
+                psnr_value = tf.image.psnr(real_img, generated_img, max_val=255)
+                psnr_values.append(self.sess.run(psnr_value))
+
+        # Calculate average PSNR
+        average_psnr = np.mean(psnr_values)
+        print(f"Average PSNR for domain {type}: {average_psnr}")
+        test_log.write(f"Average PSNR for domain {type}: {average_psnr}\n")
+
+    # def calculate_fid_for_domain(self, args, test_path, domain_type, inception_model):
+    #     test_files = glob(f"./datasets/{self.dataset_name}/val/{domain_type}/*.*[g|G]")
+    #     test_imgs = [load_data(f, is_test=True, image_size=self.image_size, flip=args.flip) for f in test_files]
+    #     test_imgs = np.reshape(np.asarray(test_imgs).astype(np.float32),
+    #                            (len(test_files), self.image_size, self.image_size, -1))
+
+    #     fid_values = []
+
+    #     for i in range(0, len(test_files) // self.batch_size):
+    #         real_imgs = np.reshape(np.array(test_imgs[i]),
+    #                                (self.batch_size, self.image_size, self.image_size, -1))
+    #         generated_imgs = self.generate_images_for_domain(real_imgs, domain_type)
+
+    #         fid_value = calculate_fid(real_imgs, generated_imgs, inception_model)
+    #         fid_values.append(fid_value)
+
+    #     average_fid = np.mean(fid_values)
+    #     return average_fid
+
+    # def generate_images_for_domain(self, real_imgs, domain_type):
+    #     if domain_type == "A":
+    #         return self.sess.run(self.A2B, feed_dict={self.real_A: real_imgs})
+    #     elif domain_type == "B":
+    #         return self.sess.run(self.B2A, feed_dict={self.real_B: real_imgs})
+    #     else:
+    #         raise ValueError("Invalid domain type")
