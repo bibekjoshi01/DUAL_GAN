@@ -4,16 +4,10 @@ import time
 from glob import glob
 import tensorflow as tf
 import numpy as np
-
-# from six.moves import xrange
-
 from ops import *
 from utils import *
 
-# Import the InceptionV3 model for feature extraction
-from tensorflow.keras.applications.inception_v3 import InceptionV3
-from tensorflow.keras.applications.inception_v3 import preprocess_input
-
+""" Model Defination"""
 
 class DualNet(object):
     def __init__(
