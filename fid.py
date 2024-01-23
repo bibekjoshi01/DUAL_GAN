@@ -1,71 +1,64 @@
-import os
-import time
 import numpy as np
 import tensorflow as tf
-from glob import glob
-from scipy.stats import entropy
 from scipy.linalg import sqrtm
-from skimage.transform import resize
+from tensorflow.keras.applications.inception_v3 import InceptionV3, preprocess_input
+from tensorflow.keras.preprocessing.image import img_to_array, load_img
+from numpy import cov, trace, iscomplexobj, asarray
+from numpy.random import shuffle
+import glob
 
-# Import the InceptionV3 model for feature extraction
-from tensorflow.keras.applications.inception_v3 import InceptionV3
-from tensorflow.keras.applications.inception_v3 import preprocess_input
-
-def calculate_fid(real_images, generated_images, inception_model):
-    # Resize images to (299, 299) as required by InceptionV3
-    real_images_resized = np.array([resize(img, (299, 299)) for img in real_images])
-    generated_images_resized = np.array([resize(img, (299, 299)) for img in generated_images])
-
-    # Preprocess images for the InceptionV3 model
-    real_images_preprocessed = preprocess_input(real_images_resized)
-    generated_images_preprocessed = preprocess_input(generated_images_resized)
-
-    # Get Inception features for real and generated images
-    real_features = inception_model.predict(real_images_preprocessed)
-    generated_features = inception_model.predict(generated_images_preprocessed)
-
-    # Calculate mean and covariance for real and generated features
-    mean_real, cov_real = np.mean(real_features, axis=0), np.cov(real_features, rowvar=False)
-    mean_generated, cov_generated = np.mean(generated_features, axis=0), np.cov(generated_features, rowvar=False)
-
-    # Calculate Fréchet distance
-    fid = calculate_frechet_distance(mean_real, cov_real, mean_generated, cov_generated)
-
+# Function to calculate Frechet Inception Distance (FID)
+def calculate_fid(model, images1, images2):
+    # calculate activations
+    act1 = model.predict(images1)
+    act2 = model.predict(images2)
+    
+    # calculate mean and covariance statistics
+    mu1, sigma1 = act1.mean(axis=0), cov(act1, rowvar=False)
+    mu2, sigma2 = act2.mean(axis=0), cov(act2, rowvar=False)
+    
+    # compute the sum of the mean differences squared
+    ssdiff = np.sum((mu1 - mu2)**2.0)
+    
+    # compute sqrt of product between covariances
+    covmean = sqrtm(sigma1.dot(sigma2))
+    
+    # check and correct imaginary numbers from sqrt
+    if iscomplexobj(covmean):
+        covmean = covmean.real
+    
+    # calculate score
+    fid = ssdiff + trace(sigma1 + sigma2 - 2.0 * covmean)
     return fid
 
-import numpy as np
-from scipy.linalg import sqrtm
+# Function to preprocess images for InceptionV3
+def preprocess_images(image_paths, target_size=(299, 299)):
+    images = [img_to_array(load_img(image_path, target_size=target_size)) for image_path in image_paths]
+    images = asarray(images)
+    images = preprocess_input(images)
+    return images
 
-def calculate_frechet_distance(mu1, sigma1, mu2, sigma2):
-    print("Original sigma1 shape:", sigma1.shape if sigma1 is not None else None)
-    print("Original sigma2 shape:", sigma2.shape if sigma2 is not None else None)
+# Function to get a list of image paths from a directory pattern
+def get_image_paths(directory_pattern):
+    return glob.glob(directory_pattern)
 
-    if sigma1 is not None:
-        # Ensure covariance matrices are symmetric positive semidefinite
-        sigma1 = (sigma1 + sigma1.T) / 2.0
+# Paths to your real and generated images
+real_image_paths = get_image_paths("./input/A/*.jpg")
+generated_image_paths = get_image_paths("./input/B/*.jpg")
 
-        # Add a small epsilon to the diagonal for numerical stability
-        epsilon = 1e-10
-        sigma1 += epsilon * np.eye(sigma1.shape[0])
+# Load and preprocess images
+real_images = preprocess_images(real_image_paths)
+generated_images = preprocess_images(generated_image_paths)
 
-    if sigma2 is not None:
-        # Ensure covariance matrices are symmetric positive semidefinite
-        sigma2 = (sigma2 + sigma2.T) / 2.0
+# Assuming you have less than 2048 images, otherwise, you'd need to batch the computation
+shuffle(real_images)
+shuffle(generated_images)
+real_images = real_images[:min(len(real_images), 2048)]
+generated_images = generated_images[:min(len(generated_images), 2048)]
 
-        # Add a small epsilon to the diagonal for numerical stability
-        epsilon = 1e-10
-        sigma2 += epsilon * np.eye(sigma2.shape[0])
+# Load InceptionV3 model
+model = InceptionV3(include_top=False, pooling='avg', input_shape=(299,299,3))
 
-    print("Adjusted sigma1 shape:", sigma1.shape if sigma1 is not None else None)
-    print("Adjusted sigma2 shape:", sigma2.shape if sigma2 is not None else None)
-
-    # Calculate Fréchet distance between two multivariate Gaussians
-    term1 = np.sum((mu1 - mu2)**2)
-    if sigma1 is not None and sigma2 is not None:
-        term2 = np.trace(sigma1 + sigma2 - 2 * sqrtm(np.dot(sigma1, sigma2)))
-        return np.sqrt(term1 + term2)
-    else:
-        return np.nan  # Return a placeholder value if there's an issue with covariance matrices
-
-# Rest of your code...
-
+# Calculate FID
+fid = calculate_fid(model, real_images, generated_images)
+print(f"FID: {fid}")

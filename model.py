@@ -259,7 +259,7 @@ class DualNet(object):
 
         self.writer = tf.summary.FileWriter("./logs/" + self.dir_name, self.sess.graph)
 
-        transition_step = 5  # Number of steps to train with paired data
+        transition_step = 1  # Number of steps to train with paired data
 
         # Load paired data
         paired_data_A, paired_data_B = self.load_paired_data()
