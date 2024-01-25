@@ -1,9 +1,6 @@
 import argparse
 import os
-
-# import scipy.misc
 import numpy as np
-
 from model import DualNet
 import tensorflow as tf
 

@@ -38,3 +38,5 @@ def compareImage(originalImage, transformedImage):
 
 # compare original RGB image similarity
 image_comparison(image1,image2)
+
+

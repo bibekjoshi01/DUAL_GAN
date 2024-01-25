@@ -4,16 +4,10 @@ import time
 from glob import glob
 import tensorflow as tf
 import numpy as np
-
-# from six.moves import xrange
-
 from ops import *
 from utils import *
 
-# Import the InceptionV3 model for feature extraction
-from tensorflow.keras.applications.inception_v3 import InceptionV3
-from tensorflow.keras.applications.inception_v3 import preprocess_input
-
+""" Model Defination"""
 
 class DualNet(object):
     def __init__(
@@ -746,30 +740,3 @@ class DualNet(object):
         average_psnr = np.mean(psnr_values)
         print(f"Average PSNR for domain {type}: {average_psnr}")
         test_log.write(f"Average PSNR for domain {type}: {average_psnr}\n")
-
-    # def calculate_fid_for_domain(self, args, test_path, domain_type, inception_model):
-    #     test_files = glob(f"./datasets/{self.dataset_name}/val/{domain_type}/*.*[g|G]")
-    #     test_imgs = [load_data(f, is_test=True, image_size=self.image_size, flip=args.flip) for f in test_files]
-    #     test_imgs = np.reshape(np.asarray(test_imgs).astype(np.float32),
-    #                            (len(test_files), self.image_size, self.image_size, -1))
-
-    #     fid_values = []
-
-    #     for i in range(0, len(test_files) // self.batch_size):
-    #         real_imgs = np.reshape(np.array(test_imgs[i]),
-    #                                (self.batch_size, self.image_size, self.image_size, -1))
-    #         generated_imgs = self.generate_images_for_domain(real_imgs, domain_type)
-
-    #         fid_value = calculate_fid(real_imgs, generated_imgs, inception_model)
-    #         fid_values.append(fid_value)
-
-    #     average_fid = np.mean(fid_values)
-    #     return average_fid
-
-    # def generate_images_for_domain(self, real_imgs, domain_type):
-    #     if domain_type == "A":
-    #         return self.sess.run(self.A2B, feed_dict={self.real_A: real_imgs})
-    #     elif domain_type == "B":
-    #         return self.sess.run(self.B2A, feed_dict={self.real_B: real_imgs})
-    #     else:
-    #         raise ValueError("Invalid domain type")
