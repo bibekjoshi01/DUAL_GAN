@@ -43,8 +43,8 @@ def get_image_paths(directory_pattern):
     return glob.glob(directory_pattern)
 
 # Paths to your real and generated images
-real_image_paths = get_image_paths("./input/A/*.jpg")
-generated_image_paths = get_image_paths("./input/B/*.jpg")
+real_image_paths = get_image_paths(".,/input/real/*.jpg")
+generated_image_paths = get_image_paths("../input/generated/*.jpg")
 
 # Load and preprocess images
 real_images = preprocess_images(real_image_paths)
