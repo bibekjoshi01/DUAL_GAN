@@ -1,0 +1,11 @@
+Loading Training Images
+----------------------------------------
+1. Paired Data (Sequential Selection):
+Direct Correspondence: In paired data, each image in dataset A has a direct counterpart in dataset B. For example, in a dataset of aligned photographs and sketches, each photograph in dataset A corresponds to a specific sketch in dataset B.
+Sequential Selection: When loading paired data, you select the nth image from dataset A and the nth image from dataset B. This ensures that the paired relationship is maintained.
+Use Case: This approach is used when the relationship between the images in the two datasets is important, such as in tasks like image-to-image translation, where you might be turning a photograph into a sketch.
+
+2. Unpaired Data (Random Selection):
+No Direct Correspondence: In unpaired data, there is no such direct correspondence between the datasets. Any image in dataset A does not have a specific related image in dataset B.
+Random Selection: When loading unpaired data, you randomly select images from both datasets. This means that the selected image from dataset A has no specific or intended relationship with the randomly selected image from dataset B.
+Use Case: This is useful in scenarios where you're interested in learning broader features that are not specific to particular image pairs. For example, if you're training a model to recognize general characteristics of different styles or categories where specific pairings are not necessary.
