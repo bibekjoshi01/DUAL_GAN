@@ -257,11 +257,13 @@ class DualNet(object):
         # Load paired data
         paired_data_A, paired_data_B = self.load_paired_data()
         paired_epoch_size = min(len(paired_data_A), len(paired_data_B)) // self.batch_size
-
+    
         # Load unpaired data
         unpaired_data_A, unpaired_data_B = self.load_unpaired_data()
         unpaired_epoch_size = min(len(unpaired_data_A), len(unpaired_data_B)) // self.batch_size
-
+        print(paired_epoch_size, "Paired Size")
+        print(unpaired_epoch_size, "UnPaired Size")
+        
         step = 1  # Reset step count
         start_time = time.time()
 
@@ -272,8 +274,10 @@ class DualNet(object):
             if epoch_idx <= transition_step:
                 data_A, data_B, epoch_size = paired_data_A, paired_data_B, paired_epoch_size
                 is_paired=True
+                print("Inside Paired")
             else:
                 data_A, data_B, epoch_size = unpaired_data_A, unpaired_data_B, unpaired_epoch_size
+                print("Inside UnPaired")
                 is_paired=False
 
             for batch_idx in range(0, epoch_size):
@@ -434,8 +438,8 @@ class DualNet(object):
 
     def load_unpaired_data(self):
         # Load all data
-        all_data_A = glob("./datasets/{}/train/A/*.*[g|G]".format(self.dataset_name))
-        all_data_B = glob("./datasets/{}/train/B/*.*[g|G]".format(self.dataset_name))
+        all_data_A = glob("./datasets/{}/unsupervised/train/A/*.*[g|G]".format(self.dataset_name))
+        all_data_B = glob("./datasets/{}/unsupervised/train/B/*.*[g|G]".format(self.dataset_name))
 
         # Optionally, you could shuffle the data
         np.random.shuffle(all_data_A)
@@ -446,22 +450,22 @@ class DualNet(object):
     def load_paired_data(self):
         # Load paired images from the dataset
         # This assumes you have a way to identify which images are pairs across domains A and B
-        data_A = glob("./datasets/{}/train/A/*.*[g|G]".format(self.dataset_name))
-        data_B = glob("./datasets/{}/train/B/*.*[g|G]".format(self.dataset_name))
+        data_A = glob("./datasets/{}/supervised/train/A/*.*[g|G]".format(self.dataset_name))
+        data_B = glob("./datasets/{}/supervised/train/B/*.*[g|G]".format(self.dataset_name))
 
         # This part depends on how your dataset is structured.
         # If your paired images have matching filenames in folders A and B, you could pair them like this:
-        paired_data_A = []
-        paired_data_B = []
-        for file_A in data_A:
-            filename = os.path.basename(file_A)
-            corresponding_file_B = os.path.join("./datasets/{}/train/B".format(self.dataset_name), filename)
-            if os.path.exists(corresponding_file_B):
-                paired_data_A.append(file_A)
-                paired_data_B.append(corresponding_file_B)
+        # paired_data_A = []
+        # paired_data_B = []
+        # for file_A in data_A:
+        #     filename = os.path.basename(file_A)
+        #     corresponding_file_B = os.path.join("./datasets/{}/supervised/train/B".format(self.dataset_name), filename)
+        #     if os.path.exists(corresponding_file_B):
+        #         paired_data_A.append(file_A)
+        #         paired_data_B.append(corresponding_file_B)
 
         # Return the paired data
-        return paired_data_A, paired_data_B
+        return data_A, data_B
 
     def fcn(self, imgs, prefix=None, reuse=False):
         with tf.variable_scope(tf.get_variable_scope()) as scope:
