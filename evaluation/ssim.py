@@ -4,9 +4,9 @@ import glob
 import matplotlib.pyplot as plt
 from skimage.metrics import structural_similarity as ssim
 import os
+import pandas as pd
 
-
-IMAGE_PATH_PREFIX = "../input/"
+IMAGE_PATH_PREFIX = "../check/v1/B2A/"
 
 # Function for MSE
 def mean_squared_error(image1, image2):
@@ -34,6 +34,7 @@ real_image_paths = get_image_paths(f"{IMAGE_PATH_PREFIX}real/*.jpg")
 # Initialize lists to store MSE and SSIM values
 mse_values = []
 ssim_values = []
+image_paths = []
 
 IMAGE_COUNTER = 1
 
@@ -55,8 +56,18 @@ for real_path in real_image_paths:
     m, s = image_comparison(image1, image2)
     mse_values.append(m)
     ssim_values.append(s)
+    image_paths.append(real_path)
     print(f"Image {IMAGE_COUNTER} - MSE: {m}, SSIM: {s}")
     IMAGE_COUNTER += 1
+
+# Create a DataFrame
+data = {'Image_Path': image_paths, 'MSE': mse_values, 'SSIM': ssim_values}
+df = pd.DataFrame(data)
+
+# Save to Excel file
+excel_file_path = 'image_metrics.xlsx'
+df.to_excel(excel_file_path, index=False)
+print(f"\nImage metrics saved to {excel_file_path}")
 
 # Calculate and print the mean MSE and SSIM
 mean_mse = np.mean(mse_values)
