@@ -21,7 +21,6 @@ class DualNet(object):
         B_channels=3,
         dataset_name="facades",
         checkpoint_dir=None,
-        transition_epoch=50,
         lambda_A=500.0,
         lambda_B=500.0,
         sample_dir=None,
@@ -253,7 +252,7 @@ class DualNet(object):
 
         self.writer = tf.summary.FileWriter("./logs/" + self.dir_name, self.sess.graph)
 
-        transition_step = 1  # Number of steps to train with paired data
+        transition_step = 50  # Number of steps to train with paired data
 
         # Load paired data
         paired_data_A, paired_data_B = self.load_paired_data()
@@ -270,7 +269,7 @@ class DualNet(object):
             print("Epoch: [%2d]" % epoch_idx)
 
             # Decide whether to use paired or unpaired data based on the step count
-            if step <= transition_step * paired_epoch_size:
+            if epoch_idx <= transition_step:
                 data_A, data_B, epoch_size = paired_data_A, paired_data_B, paired_epoch_size
                 is_paired=True
             else:
@@ -284,7 +283,7 @@ class DualNet(object):
                 self.run_optim(imgA_batch, imgB_batch, step, start_time, batch_idx, is_paired)
 
                 if step % self.log_freq == 0:
-                    print("Step: [%4d/%4d]" % (step, epoch_size))
+                    print("Step: [%4d/%4d]" % (batch_idx, epoch_size))
 
                 if np.mod(step, 100) == 1:
                     self.sample_shotcut(args.sample_dir, epoch_idx, batch_idx)
