@@ -1,22 +1,22 @@
 import os
 
 # Specify the source folder where your images are located
-source_folder = '../test/v1/B'
+source_folder = '../input/B'
 
 # Specify the destination folder where you want to move the renamed images
-destination_folder = '../output'
+destination_folder = '../check/v2/A2B/real'
 
 # Create the destination folder if it doesn't exist
 os.makedirs(destination_folder, exist_ok=True)
 
 # Function to rename files
-def rename_files(source_folder, destination_folder, prefix):
+def rename_files(source_folder, destination_folder, suffix='realB'):
     file_list = os.listdir(source_folder)
     count = 1
     for filename in file_list:
-        if filename.startswith(prefix):
+        if filename.endswith(suffix + ".jpg"):
             # Construct the new filename
-            new_filename = f'{prefix}_{count}.jpg'
+            new_filename = f'R_{count}.jpg'
             
             # Full path to the source file
             src_path = os.path.join(source_folder, filename)
@@ -30,7 +30,7 @@ def rename_files(source_folder, destination_folder, prefix):
             count += 1
 
 # Rename the A2B images
-rename_files(source_folder, destination_folder, 'B_')
+rename_files(source_folder, destination_folder)
 
 # Rename the realA images
-rename_files(source_folder, destination_folder, 'B_real')
+# rename_files(source_folder, destination_folder, 'B_real')
