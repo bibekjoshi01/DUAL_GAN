@@ -27,7 +27,7 @@ class DualNet(object):
         dropout_rate=0.0,
         loss_metric="L1",
         flip=False,
-        n_critic=3,
+        n_critic=4,
         # n_critic=5,
         GAN_type="wgan-gp",
         clip_value=0.1,
@@ -253,7 +253,7 @@ class DualNet(object):
 
         self.writer = tf.summary.FileWriter("./logs/" + self.dir_name, self.sess.graph)
 
-        transition_step = 50  # Number of steps to train with paired data
+        transition_step = 30  # Number of steps to train with paired data
 
         # Load paired data
         paired_data_A, paired_data_B = self.load_paired_data()
