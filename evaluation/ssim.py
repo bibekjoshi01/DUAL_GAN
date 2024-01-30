@@ -6,7 +6,7 @@ from skimage.metrics import structural_similarity as ssim
 import os
 import pandas as pd
 
-IMAGE_PATH_PREFIX = "../check/v2/B2A/"
+IMAGE_PATH_PREFIX = "../check/99/B2A/"
 
 # Function for MSE
 def mean_squared_error(image1, image2):
