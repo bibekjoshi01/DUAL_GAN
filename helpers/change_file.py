@@ -1,10 +1,10 @@
 import os
 
 # Specify the source folder where your images are located
-source_folder = '../input/B'
+source_folder = '../check/99/B'
 
 # Specify the destination folder where you want to move the renamed images
-destination_folder = '../check/v2/A2B/real'
+destination_folder = '../check/99/B2A/real'
 
 # Create the destination folder if it doesn't exist
 os.makedirs(destination_folder, exist_ok=True)
