@@ -14,7 +14,7 @@ class DualNet(object):
         self,
         sess,
         image_size=256,
-        batch_size=1,
+        batch_size=5,
         gcn=64,
         dcn=64,
         A_channels=3,
@@ -27,8 +27,8 @@ class DualNet(object):
         dropout_rate=0.0,
         loss_metric="L1",
         flip=False,
-        n_critic=4,
-        # n_critic=5,
+        # n_critic=4,
+        n_critic=5,
         GAN_type="wgan-gp",
         clip_value=0.1,
         log_freq=50,
@@ -72,8 +72,11 @@ class DualNet(object):
 
     def build_model(self):
         ### Define placeholders
-        self.real_A = tf.placeholder(tf.float32, [self.batch_size, self.image_size, self.image_size, self.A_channels], name="real_A")
-        self.real_B = tf.placeholder(tf.float32, [self.batch_size, self.image_size, self.image_size, self.B_channels], name="real_B")
+        self.real_A = tf.placeholder(tf.float32, [5, self.image_size, self.image_size, self.A_channels], name="real_A")
+        self.real_B = tf.placeholder(tf.float32, [5, self.image_size, self.image_size, self.B_channels], name="real_B")
+        # self.real_A = tf.placeholder(tf.float32, [self.batch_size, self.image_size, self.image_size, self.A_channels], name="real_A")
+        # self.real_B = tf.placeholder(tf.float32, [self.batch_size, self.image_size, self.image_size, self.B_channels], name="real_B")
+
 
         ### Define graphs for generators
         self.A2B = self.A_g_net(self.real_A, reuse=False)  # Generator A to B
@@ -253,7 +256,7 @@ class DualNet(object):
 
         self.writer = tf.summary.FileWriter("./logs/" + self.dir_name, self.sess.graph)
 
-        transition_step = 30  # Number of steps to train with paired data
+        transition_step = 2  # Number of steps to train with paired data
 
         # Load paired data
         paired_data_A, paired_data_B = self.load_paired_data()
@@ -283,6 +286,9 @@ class DualNet(object):
 
             for batch_idx in range(0, epoch_size):
                 imgA_batch, imgB_batch = self.load_training_imgs(data_A, data_B, batch_idx, is_paired)
+            
+                # Add a print statement to log the batch size
+                print(f"Processing batch {batch_idx+1}/{epoch_size} with batch size: {len(imgA_batch)}")
 
                 # Run optimization step
                 self.run_optim(imgA_batch, imgB_batch, step, start_time, batch_idx, is_paired)
@@ -300,25 +306,51 @@ class DualNet(object):
 
     def load_training_imgs(self, data_A, data_B, idx, is_paired):
 
+        print("Inside Training img")
         if is_paired:
             # Load images assuming data_A and data_B are paired
-            batch_files_A = data_A[idx * self.batch_size : (idx + 1) * self.batch_size]
-            batch_files_B = data_B[idx * self.batch_size : (idx + 1) * self.batch_size]
+                    # Assuming data_A and data_B are lists of file paths
+            print("Inside Paired")
+
+            # To illustrate what's happening, let's add print statements:
+            print(f"Current batch index: {idx}")
+            print(f"Batch size: {self.batch_size}")
+            start_index = idx * self.batch_size
+            end_index = (idx + 1) * self.batch_size
+            print(f"Selecting batch from index {start_index} to {end_index} in data_A")
+
+            batch_files_A = data_A[idx * 5: (idx + 1) * 5]
+            batch_files_B = data_B[idx * 5 : (idx + 1) * 5]
+
+            # batch_files_A = data_A[idx * self.batch_size : (idx + 1) * self.batch_size]
+            # batch_files_B = data_B[idx * self.batch_size : (idx + 1) * self.batch_size]
         else:
             # Load images for unpaired training (can be random or sequential)
+            print("Inside unPaired")
             batch_files_A = np.random.choice(data_A, self.batch_size, replace=False)
             batch_files_B = np.random.choice(data_B, self.batch_size, replace=False)
 
         batch_imgs_A = [load_data(f, image_size=self.image_size, flip=self.flip) for f in batch_files_A]
         batch_imgs_B = [load_data(f, image_size=self.image_size, flip=self.flip) for f in batch_files_B]
 
-        batch_imgs_A = np.reshape(np.array(batch_imgs_A).astype(np.float32), (self.batch_size, self.image_size, self.image_size, -1))
-        batch_imgs_B = np.reshape(np.array(batch_imgs_B).astype(np.float32), (self.batch_size, self.image_size, self.image_size, -1))
+        # batch_imgs_A = np.reshape(np.array(batch_imgs_A).astype(np.float32), (self.batch_size, self.image_size, self.image_size, -1))
+        # batch_imgs_B = np.reshape(np.array(batch_imgs_B).astype(np.float32), (self.batch_size, self.image_size, self.image_size, -1))
+
+         # Load images from paths
+        # batch_imgs_A = [load_data(f,image_size=self.image_size,) for f in batch_files_A]  # Ensure load_data function doesn't alter batch size
+        # batch_imgs_B = [load_data(f,image_size=self.image_size,) for f in batch_files_B]
+        
+        # Convert lists to np arrays if not already done in load_data
+        batch_imgs_A = np.array(batch_imgs_A)
+        batch_imgs_B = np.array(batch_imgs_B)
 
         return batch_imgs_A, batch_imgs_B
 
     def run_optim(self, batch_A_imgs, batch_B_imgs, counter, start_time, batch_idx, is_paired):
+        
         # Update discriminator
+        print(f"Batch A size: {len(batch_A_imgs)}, Batch B size: {len(batch_B_imgs)}") 
+        # print(f"Expected batch size: {self.batch_size}, Actual batch A size: {batch_A_imgs.shape[0]}, batch B size: {batch_B_imgs.shape[0]}")
         _, Adfake, Adreal, Bdfake, Bdreal, Ad, Bd = self.sess.run(
             [
                 self.d_optim,
@@ -420,7 +452,9 @@ class DualNet(object):
                 h4 = conv2d(h3, 1, name=prefix + "h4")
             else:
                 h4 = linear(
-                    tf.reshape(h3, [self.batch_size, -1]), 1, prefix + "d_h3_lin"
+                    # tf.reshape(h3, [self.batch_size, -1]), 1, prefix + "d_h3_lin"
+                    tf.reshape(h3, [None, -1]), 1, prefix + "d_h3_lin"
+
                 )
 
             return h4
