@@ -6,7 +6,7 @@ from skimage.metrics import structural_similarity as ssim
 import os
 import pandas as pd
 
-IMAGE_PATH_PREFIX = "../check/v4/B2A/"
+IMAGE_PATH_PREFIX = "../check/v4n/A2B/"
 
 # Function for MSE
 def mean_squared_error(image1, image2):
@@ -71,8 +71,11 @@ print(f"\nImage metrics saved to {excel_file_path}")
 
 # Calculate and print the mean MSE and SSIM
 mean_mse = np.mean(mse_values)
+median_mse = np.median(mse_values)
+# mode_mse = np.mod(mse_values)
 mean_ssim = np.mean(ssim_values)
-print(f"\nOverall Mean MSE: {mean_mse}\nOverall Mean SSIM: {mean_ssim}")
+# print(f"\nOverall Mean MSE: {mean_mse}\nOverall Mean SSIM: {mean_ssim}")
+print(f"\nOverall Mean MSE: {mean_mse} \nOverall Median MSE: {median_mse}\nOverall Mean SSIM: {mean_ssim}")
 
 # Plotting the MSE and SSIM values
 plt.figure(figsize=(10, 5))
