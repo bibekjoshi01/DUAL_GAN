@@ -14,7 +14,7 @@ class DualNet(object):
         self,
         sess,
         image_size=256,
-        batch_size=1,
+        batch_size=20,
         gcn=64,
         dcn=64,
         A_channels=3,
@@ -27,7 +27,7 @@ class DualNet(object):
         dropout_rate=0.0,
         loss_metric="L1",
         flip=False,
-        n_critic=4,
+        n_critic=5,
         # n_critic=5,
         GAN_type="wgan-gp",
         clip_value=0.1,
@@ -467,6 +467,7 @@ class DualNet(object):
 
         # Return the paired data
         return data_A, data_B
+
 
     def fcn(self, imgs, prefix=None, reuse=False):
         with tf.variable_scope(tf.get_variable_scope()) as scope:
