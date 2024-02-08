@@ -353,13 +353,15 @@ class DualNet(object):
             else: 
                 # Custom logic for unpaired data
                 # Potentially relax cycle consistency or apply different strategies
-                _, Ag, Bg, ABloss, BAloss = self.sess.run(
+                _, Ag, Bg, ABloss, BAloss, cycle_A_loss, cycle_B_loss = self.sess.run(
                     [
                         self.g_optim,
                         self.Ag_loss,  # Adjust if needed for unpaired data
                         self.Bg_loss,  # Adjust if needed for unpaired data
                         self.AB_loss,  # Loss for A to B translation
                         self.BA_loss,  # Loss for B to A translation
+                        self.cycle_A_loss,
+                        self.cycle_B_loss,
                     ],
                     feed_dict={self.real_A: batch_A_imgs, self.real_B: batch_B_imgs},
                 )
