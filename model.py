@@ -359,7 +359,7 @@ class DualNet(object):
                 self.Bd_loss_fake,
                 self.Bd_loss_real,
                 self.Ad_loss,
-                self.Bd_loss,
+                self.Bd_loss,   
             ],
             feed_dict={self.real_A: batch_A_imgs, self.real_B: batch_B_imgs},
         )
